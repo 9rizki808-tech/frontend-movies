@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cinema Tickets • Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="dashboard-header">
+    <nav class="navbar">
+      <a href="#" class="logo">CINEMA TICKETS</a>
+      <div class="header-actions">
+        <button class="btn btn-add" onclick="showMovieForm()">
+          <span>+</span> Add Movie
+        </button>
+        <button class="btn btn-logout" onclick="logout()">Logout</button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Movie Form -->
+  <div class="movie-form" id="movieForm">
+    <h2 id="formTitle">Add New Movie</h2>
+    <form id="movieFormContent">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="title">Title *</label>
+          <input type="text" id="title" placeholder="Movie title" required>
+        </div>
+        <div class="form-group">
+          <label for="director">Director *</label>
+          <input type="text" id="director" placeholder="Director name" required>
+        </div>
+        <div class="form-group">
+          <label for="genre">Genre *</label>
+          <input type="text" id="genre" placeholder="Action, Drama, etc." required>
+        </div>
+        <div class="form-group">
+          <label for="duration">Duration (minutes) *</label>
+          <input type="number" id="duration" min="1" placeholder="120" required>
+        </div>
+        <div class="form-group">
+          <label for="rating">Rating (0.0 - 10.0)</label>
+          <input type="number" id="rating" min="0" max="10" step="0.1" placeholder="8.5">
+        </div>
+        <div class="form-group">
+          <label for="release_date">Release Date *</label>
+          <input type="date" id="release_date" required>
+        </div>
+        <div class="form-group full-width">
+          <label for="poster_url">Poster URL</label>
+          <input type="url" id="poster_url" placeholder="https://example.com/poster.jpg">
+        </div>
+        <div class="form-group full-width">
+          <label for="synopsis">Synopsis *</label>
+          <textarea id="synopsis" placeholder="Movie synopsis..." rows="4" required></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn">Save Movie</button>
+      <button type="button" class="btn" style="background:#666;" onclick="hideMovieForm()">Cancel</button>
+    </form>
+  </div>
+
+  <!-- Bookings Section -->
+  <div class="booking-card">
+    <div class="booking-header">🎟️ Your Bookings</div>
+    <div id="bookingsList">
+      <!-- Bookings will be loaded here -->
+    </div>
+  </div>
+
+  <!-- Movies List -->
+  <section class="movies-section">
+    <h2 class="section-title">Your Movie Collection</h2>
+    <div class="movies-grid" id="moviesGrid">
+      <!-- Movies will be loaded here -->
+    </div>
+  </section>
+
+  <script src="js/main.js"></script>
+  <script>
+    let currentEditId = null;
+
+    // Check authentication
+    if (!getToken()) {
+      window.location.href = 'login.html';
+    }
+
+    // Load data
+    async function loadData() {
+      await loadMovies();
+      await loadBookings();
+    }
+
+    // Load movies
+    async function loadMovies() {
+      try {
+        const movies = await getMovies();
+        const grid = document.getElementById('moviesGrid');
+        
+        if (movies.length === 0) {
+          grid.innerHTML = '<div class="empty-state"><h3>No movies yet</h3><p>Add your first movie to start selling tickets!</p></div>';
+          return;
+        }
+        
+        grid.innerHTML = movies.map(movie => `
+          <div class="movie-card">
+            <img src="${movie.poster_url || 'https://via.placeholder.com/220x320/141414/ffffff?text=No+Poster'}" 
+                 alt="${movie.title}" class="movie-poster">
+            <div class="movie-overlay">
+              <div class="movie-title">${movie.title}</div>
+              <div class="movie-meta">${movie.release_date} • ${movie.duration}m</div>
+            </div>
+            <div style="position:absolute;top:10px;right:10px;display:flex;gap:5px;">
+              <button onclick="editMovie(${movie.id})" style="background:#333;padding:2px 6px;border-radius:3px;color:white;">✏️</button>
+              <button onclick="deleteMovieConfirm(${movie.id})" style="background:#e50914;padding:2px 6px;border-radius:3px;color:white;">🗑️</button>
+              <button onclick="bookTickets(${movie.id}, '${movie.title}')" style="background:#f5c518;padding:2px 6px;border-radius:3px;color:black;">🎫</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        document.getElementById('moviesGrid').innerHTML = '<div class="empty-state"><h3>Failed to load movies</h3></div>';
+      }
+    }
+
+    // Load bookings
+    async function loadBookings() {
+      try {
+        const bookings = await getBookings();
+        const container = document.getElementById('bookingsList');
+        
+        if (bookings.length === 0) {
+          container.innerHTML = '<p style="color:#666;">No bookings yet. Start selling tickets!</p>';
+          return;
+        }
+        
+        container.innerHTML = bookings.map(booking => `
+          <div class="booking-info">
+            <div class="info-row">
+              <span class="info-label">Movie:</span>
+              <span class="info-value">${booking.movie_title}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date & Time:</span>
+              <span class="info-value">${formatDate(booking.show_date)} at ${formatTime(booking.show_time)}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Seats:</span>
+              <span class="info-value">${booking.seats}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Total:</span>
+              <span class="info-value">${formatCurrency(booking.total_price)}</span>
+            </div>
+            <div class="booking-code">${booking.booking_code}</div>
+          </div>
+        `).join('');
+      } catch (error) {
+        document.getElementById('bookingsList').innerHTML = '<p style="color:#ff4d4d;">Failed to load bookings</p>';
+      }
+    }
+
+    // Form functions
+    function showMovieForm() {
+      document.getElementById('formTitle').textContent = 'Add New Movie';
+      document.getElementById('movieForm').style.display = 'block';
+      resetForm();
+      currentEditId = null;
+    }
+
+    function hideMovieForm() {
+      document.getElementById('movieForm').style.display = 'none';
+    }
+
+    function resetForm() {
+      document.getElementById('title').value = '';
+      document.getElementById('director').value = '';
+      document.getElementById('genre').value = '';
+      document.getElementById('duration').value = '';
+      document.getElementById('rating').value = '';
+      document.getElementById('release_date').value = '';
+      document.getElementById('poster_url').value = '';
+      document.getElementById('synopsis').value = '';
+    }
+
+    function editMovie(id) {
+      currentEditId = id;
+      document.getElementById('formTitle').textContent = 'Edit Movie';
+      document.getElementById('movieForm').style.display = 'block';
+      // In production, you'd populate the form with existing data
+    }
+
+    async function deleteMovieConfirm(id) {
+      if (confirm('Are you sure you want to delete this movie? This will also delete all related bookings.')) {
+        try {
+          await deleteMovie(id);
+          loadData();
+        } catch (error) {
+          alert('Failed to delete movie: ' + error.message);
+        }
+      }
+    }
+
+    function bookTickets(movieId, movieTitle) {
+      const showDate = prompt('Enter show date (YYYY-MM-DD):');
+      const showTime = prompt('Enter show time (HH:MM):');
+      const seats = prompt('Enter seats (comma separated, e.g., A1,A2,B5):');
+      const totalPrice = prompt('Enter total price (in IDR):');
+      
+      if (showDate && showTime && seats && totalPrice) {
+        createBooking({
+          movie_id: movieId,
+          show_date: showDate,
+          show_time: showTime,
+          seats: seats,
+          total_price: parseFloat(totalPrice)
+        }).then(() => {
+          alert('Booking created successfully!');
+          loadData();
+        }).catch(error => {
+          alert('Failed to create booking: ' + error.message);
+        });
+      }
+    }
+
+    // Form submission
+    document.getElementById('movieFormContent').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const movieData = {
+        title: document.getElementById('title').value,
+        director: document.getElementById('director').value,
+        genre: document.getElementById('genre').value,
+        duration: parseInt(document.getElementById('duration').value),
+        rating: document.getElementById('rating').value ? parseFloat(document.getElementById('rating').value) : null,
+        release_date: document.getElementById('release_date').value,
+        poster_url: document.getElementById('poster_url').value || null,
+        synopsis: document.getElementById('synopsis').value
+      };
+      
+      try {
+        if (currentEditId) {
+          await updateMovie(currentEditId, movieData);
+        } else {
+          await createMovie(movieData);
+        }
+        hideMovieForm();
+        loadData();
+      } catch (error) {
+        alert('Error saving movie: ' + error.message);
+      }
+    });
+
+    // Logout
+    function logout() {
+      clearAuth();
+      window.location.href = 'login.html';
+    }
+
+    // Initialize
+    loadData();
+  </script>
+</body>
+</html>
